@@ -1,0 +1,359 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  CircularProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Chip,
+  Table,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  IconButton,
+} from '@mui/material';
+import { 
+  ExpandMore, 
+  Refresh, 
+  CheckCircle,
+  Cancel,
+} from '@mui/icons-material';
+import axios from 'axios';
+import { useAuth } from '../../../contexts/AuthContext';
+
+const StudentAttendanceDashboard = () => {
+  const [mainGroups, setMainGroups] = useState([]);
+  const [expandedMainGroup, setExpandedMainGroup] = useState(null);
+  const [selectedSubGroup, setSelectedSubGroup] = useState(null);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceStats, setAttendanceStats] = useState({
+    totalLectures: 0,
+    present: 0,
+    absent: 0,
+    percentage: 0
+  });
+  
+  const { user, token } = useAuth();
+
+  useEffect(() => {
+    fetchStudentGroups();
+  }, []);
+
+  const fetchStudentGroups = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get('/api/students/my-groups', { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      setMainGroups(res.data);
+    } catch (err) {
+      console.error('Error fetching student groups:', err);
+      setMainGroups([]);
+    }
+    setLoading(false);
+  };
+
+  const handleMainGroupExpand = (mainGroupId) => {
+    setExpandedMainGroup(expandedMainGroup === mainGroupId ? null : mainGroupId);
+  };
+
+  const handleSubGroupSelect = async (subGroup) => {
+    setSelectedSubGroup(subGroup);
+    setAttendanceLoading(true);
+    try {
+      const res = await axios.get(`/api/attendance/student/${user._id}/subgroup/${subGroup._id}`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      setAttendanceRecords(res.data);
+      calculateAttendanceStats(res.data);
+    } catch (err) {
+      console.error('Error fetching attendance:', err);
+      setAttendanceRecords([]);
+      setAttendanceStats({
+        totalLectures: 0,
+        present: 0,
+        absent: 0,
+        percentage: 0
+      });
+    }
+    setAttendanceLoading(false);
+  };
+
+  const handleRefresh = () => {
+    fetchStudentGroups();
+  };
+
+  const calculateAttendanceStats = (records) => {
+    if (!records || records.length === 0) {
+      setAttendanceStats({
+        totalLectures: 0,
+        present: 0,
+        absent: 0,
+        percentage: 0
+      });
+      return;
+    }
+    
+    let presentCount = 0;
+    let totalLectures = records.length;
+
+    records.forEach(record => {
+      if (record.status) {
+        presentCount++;
+      }
+    });
+
+    const absentCount = totalLectures - presentCount;
+    const percentage = Math.round((presentCount / totalLectures) * 100);
+
+    setAttendanceStats({
+      totalLectures,
+      present: presentCount,
+      absent: absentCount,
+      percentage
+    });
+  };
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+      {/* Title */}
+      <Typography variant="h6" fontWeight={700} gutterBottom>My Attendance</Typography>
+
+      <Grid container spacing={3}>
+        {/* Left Panel: Groups/Subgroups Navigation */}
+        <Grid item xs={12} md={4}>
+          <Paper elevation={2} sx={{ p: 2, height: '100%', borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6">My Groups</Typography>
+              <IconButton onClick={handleRefresh} size="small" color="primary">
+                <Refresh />
+              </IconButton>
+            </Box>
+
+            {/* Loading indicator */}
+            {loading && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+                <CircularProgress />
+              </Box>
+            )}
+
+            {/* Main groups accordion */}
+            {!loading && mainGroups.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', my: 2 }}>
+                You are not part of any groups yet.
+              </Typography>
+            )}
+
+            {!loading && mainGroups.map((group) => (
+              <Accordion 
+                key={group._id} 
+                expanded={expandedMainGroup === group._id}
+                onChange={() => handleMainGroupExpand(group._id)}
+                sx={{ 
+                  mb: 1,
+                  boxShadow: 'none',
+                  border: '1px solid #e0e0e0',
+                  '&:before': { display: 'none' },
+                  borderRadius: '8px',
+                  overflow: 'hidden'
+                }}
+              >
+                <AccordionSummary
+                  expandIcon={<ExpandMore />}
+                  sx={{ 
+                    backgroundColor: expandedMainGroup === group._id ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                    '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' } 
+                  }}
+                >
+                  <Typography>{group.name}</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 0 }}>
+                  <List disablePadding>
+                    {group.subgroups && group.subgroups.map((subgroup) => (
+                      <ListItem 
+                        key={subgroup._id} 
+                        disablePadding
+                        secondaryAction={
+                          <Chip 
+                            size="small" 
+                            label={`${subgroup.studentCount || 0} students`} 
+                            sx={{ fontSize: '0.7rem' }}
+                          />
+                        }
+                      >
+                        <ListItemButton 
+                          onClick={() => handleSubGroupSelect(subgroup)}
+                          selected={selectedSubGroup && selectedSubGroup._id === subgroup._id}
+                          sx={{ 
+                            pl: 4,
+                            '&.Mui-selected': {
+                              backgroundColor: 'primary.light',
+                              '&:hover': {
+                                backgroundColor: 'primary.light',
+                              },
+                            },
+                          }}
+                        >
+                          <ListItemText 
+                            primary={subgroup.name} 
+                            primaryTypographyProps={{ 
+                              fontWeight: selectedSubGroup && selectedSubGroup._id === subgroup._id ? 600 : 400,
+                              fontSize: '0.9rem'
+                            }} 
+                          />
+                        </ListItemButton>
+                      </ListItem>
+                    ))}
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+            ))}
+          </Paper>
+        </Grid>
+
+        {/* Right Panel: Attendance Records */}
+        <Grid item xs={12} md={8}>
+          <Paper elevation={2} sx={{ p: 2, height: '100%', borderRadius: 2 }}>
+            {/* Title Section */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6">
+                {selectedSubGroup ? `Attendance for ${selectedSubGroup.name}` : 'Select a group to view attendance'}
+              </Typography>
+            </Box>
+
+            {/* Loading indicator for attendance records */}
+            {attendanceLoading && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+                <CircularProgress />
+              </Box>
+            )}
+
+            {/* No attendance records message */}
+            {!attendanceLoading && !selectedSubGroup && (
+              <Box sx={{ textAlign: 'center', my: 4 }}>
+                <Typography variant="body1" color="text.secondary">
+                  Please select a group to view attendance records
+                </Typography>
+              </Box>
+            )}
+
+            {!attendanceLoading && selectedSubGroup && attendanceRecords.length === 0 && (
+              <Box sx={{ textAlign: 'center', my: 4 }}>
+                <Typography variant="body1" color="text.secondary">
+                  No attendance records found for this group
+                </Typography>
+              </Box>
+            )}
+
+            {/* Attendance Records */}
+            {!attendanceLoading && selectedSubGroup && attendanceRecords.length > 0 && (
+              <>
+                {/* Attendance Statistics */}
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={4}>
+                    <Box 
+                      sx={{ 
+                        p: 2, 
+                        borderRadius: 2, 
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)', 
+                        border: '1px solid rgba(46, 204, 113, 0.2)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ mb: 1 }} color="text.secondary">Present</Typography>
+                      <Typography variant="h4" color="success.main" fontWeight="bold">{attendanceStats.present}</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Box 
+                      sx={{ 
+                        p: 2, 
+                        borderRadius: 2, 
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)', 
+                        border: '1px solid rgba(231, 76, 60, 0.2)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ mb: 1 }} color="text.secondary">Absent</Typography>
+                      <Typography variant="h4" color="error.main" fontWeight="bold">{attendanceStats.absent}</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Box 
+                      sx={{ 
+                        p: 2, 
+                        borderRadius: 2, 
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)', 
+                        border: '1px solid rgba(52, 152, 219, 0.2)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ mb: 1 }} color="text.secondary">Percentage</Typography>
+                      <Typography 
+                        variant="h4" 
+                        color={attendanceStats.percentage >= 75 ? 'success.main' : 'error.main'} 
+                        fontWeight="bold"
+                      >
+                        {attendanceStats.percentage}%
+                      </Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+
+                {/* Attendance Records Table */}
+                <TableContainer component={Paper} elevation={0} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Date</TableCell>
+                        <TableCell>Time</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Marked By</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {attendanceRecords.map((record) => (
+                        <TableRow key={record._id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                          <TableCell>{new Date(record.date).toLocaleDateString()}</TableCell>
+                          <TableCell>{new Date(record.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={record.status ? "Present" : "Absent"} 
+                              color={record.status ? "success" : "error"}
+                              size="small"
+                              sx={{ minWidth: 75 }}
+                            />
+                          </TableCell>
+                          <TableCell>{record.markedBy ? record.markedBy.name : "System"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
+export default StudentAttendanceDashboard;
