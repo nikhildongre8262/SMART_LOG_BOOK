@@ -1,9 +1,14 @@
-# Ignore Node.js dependencies
-node_modules/
-.env
-dist/
-build/
+# Node.js dependencies
+**/node_modules/
+
+# Build outputs
+frontend/build/
+backend/dist/
+
+# Environment variables
+**/.env
+
+# OS & IDE files
 .DS_Store
 *.log
-# Ignore all node_modules folders
-**/node_modules/
+.vscode/
